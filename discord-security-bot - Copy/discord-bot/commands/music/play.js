@@ -28,14 +28,15 @@ module.exports = {
     try {
       let url = query;
       let title = query;
+      let stream;
 
       console.log(`🔍 Caut: ${query}`);
 
-      // Validare link YouTube
+      // Validare link
       const validation = play.yt_validate(query);
 
       if (validation !== 'video') {
-        // Căutare cu timeout
+        // Căutare
         try {
           const results = await Promise.race([
             play.search(query, { limit: 1, source: { youtube: 'video' } }),
@@ -60,20 +61,22 @@ module.exports = {
 
       console.log(`✅ URL final: ${url} | Title: ${title}`);
 
-      // ✅ FOLOSESC PLAY-DL DIRECT pentru stream
-      let stream;
+      // Stream folosind play-dl corect
       try {
-        stream = await play.stream(url, { 
-          discordPlayerCompatibility: true 
-        });
+        const info = await play.getInfo(url);
+        if (!info) {
+          return await interaction.editReply('❌ Piesa nu e disponibilă.');
+        }
+        title = info.title || title;
+        stream = await play.stream(info, { discordPlayerCompatibility: true });
       } catch (streamErr) {
         console.error('❌ Eroare stream:', streamErr.message);
         return await interaction.editReply(
-          `❌ Nu pot reda piesa. Încearcă cu alt link.`
+          `❌ Eroare: ${streamErr.message.substring(0, 100)}`
         );
       }
 
-      // Conectează la voice channel
+      // Conectează
       const state = await connect(voiceChannel);
       state.textChannel = interaction.channel;
 
@@ -96,10 +99,10 @@ module.exports = {
       console.error('❌ Eroare /play:', err.message);
       try {
         return await interaction.editReply(
-          `❌ Eroare: ${err.message || 'Nu am putut încărca piesa'}`
+          `❌ Eroare: ${err.message.substring(0, 100)}`
         );
       } catch (editErr) {
-        console.error('Nu am putut edita reply:', editErr.message);
+        console.error('Nu am putut edita reply');
       }
     }
   },
