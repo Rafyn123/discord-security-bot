@@ -83,7 +83,7 @@ module.exports = {
 
       console.log(`✅ URL final: ${url} | Title: ${title}`);
 
-      // Crează stream
+      // Crează stream cu parametri anti-bot și timeout mai mare
       const ytdlp = spawn(ytdlpPath, [
         url,
         '-f', 'bestaudio',
@@ -91,21 +91,27 @@ module.exports = {
         '--no-playlist',
         '--quiet',
         '--no-warnings',
+        '--socket-timeout', '30',  // ✅ TIMEOUT mai mare
+        '--extractor-args', 'youtube:player_client=web',  // ✅ Evită autentificare YouTube
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',  // ✅ User-Agent
       ]);
 
       let hasError = false;
+      let errorMsg = '';
 
       ytdlp.stderr.on('data', (data) => {
         const errMsg = data.toString();
         console.error('yt-dlp stderr:', errMsg);
         if (errMsg.includes('ERROR')) {
           hasError = true;
+          errorMsg = errMsg;
         }
       });
 
       ytdlp.on('error', (procErr) => {
         console.error('❌ Eroare pornire yt-dlp:', procErr.message);
         hasError = true;
+        errorMsg = procErr.message;
       });
 
       // Conectează la voice channel
@@ -114,7 +120,7 @@ module.exports = {
 
       if (hasError) {
         return await interaction.editReply(
-          `❌ Eroare descărcare: ${title}`
+          `❌ Eroare descărcare: ${title}\n\`\`\`${errorMsg.slice(0, 200)}\`\`\``
         );
       }
 
@@ -134,7 +140,7 @@ module.exports = {
         );
       }
     } catch (err) {
-      console.error('❌ Eroare /play:', err);
+      console.error('❌ Eroare /play:', err.message);
       try {
         return await interaction.editReply(
           `❌ Eroare: ${err.message || 'Nu am putut încărca piesa'}`
