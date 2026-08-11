@@ -1,3 +1,20 @@
+// =============================================
+// SERVER HTTP PENTRU RENDER (ADAUGAT)
+// =============================================
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+  res.send('✅ Discord Security Bot rulează!');
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ HTTP Server pornit pe portul ${PORT}`);
+});
+// =============================================
+
+// ===== CODUL TĂU ORIGINAL (PĂSTRAT) =====
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
