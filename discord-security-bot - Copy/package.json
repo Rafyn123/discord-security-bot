@@ -1,0 +1,9 @@
+{
+  "name": "discord-security-bot-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "cd \"discord-bot\" && npm start",
+    "postinstall": "cd \"discord-bot\" && npm install"
+  }
+}
