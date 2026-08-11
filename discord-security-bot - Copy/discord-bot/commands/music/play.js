@@ -4,9 +4,9 @@ const { getSpotifyInfo } = require('../../utils/spotify');
 
 // ===== YOUTUBE API v3 =====
 const { google } = require('googleapis');
-const youtube = google.youtube({ 
-  version: 'v3', 
-  auth: process.env.YOUTUBE_API_KEY 
+const youtube = google.youtube({
+  version: 'v3',
+  auth: process.env.YOUTUBE_API_KEY
 });
 
 // ===== YT-DLP DOAR PENTRU STREAM =====
@@ -59,10 +59,10 @@ async function searchYoutube(query) {
       10000,
       'Timeout API YouTube'
     );
-    
+
     const video = response.data.items[0];
     if (!video) throw new Error('Nu s-a găsit niciun rezultat');
-    
+
     console.log(`✅ Găsit: ${video.snippet.title}`);
     return {
       url: `https://www.youtube.com/watch?v=${video.id.videoId}`,
@@ -78,10 +78,10 @@ async function searchYoutube(query) {
 async function getYtStream(url) {
   try {
     await sleep(1500);
-    
+
     // Calea către cookie-uri
     const cookiesPath = path.join(__dirname, '../../www.youtube.com_cookies.txt');
-    
+
     // Verifică dacă există cookie-uri
     let cookieOption = '';
     if (fs.existsSync(cookiesPath)) {
@@ -90,7 +90,7 @@ async function getYtStream(url) {
     } else {
       console.warn(`⚠️ Fișierul de cookie-uri nu a fost găsit: ${cookiesPath}`);
     }
-    
+
     // Opțiuni îmbunătățite cu cookie-uri
     const options = [
       '-f bestaudio',
@@ -100,19 +100,19 @@ async function getYtStream(url) {
       '--add-header "Accept-Language:en-US,en;q=0.9"',
       '--extractor-args "youtube:player_client=web,default"',
       '--no-check-certificate'
-    ].filter(opt => opt).join(' '); // Elimină opțiunile goale
-    
+    ].filter(opt => opt).join(' ');
+
     console.log(`🎵 Obțin stream pentru: ${url}`);
-    
+
     const result = await withTimeout(
       execPromise(`"${ytDlpPath}" ${options} "${url}"`),
       20000,
       'Timeout yt-dlp'
     );
-    
+
     const audioUrl = result.stdout.trim();
     if (!audioUrl) throw new Error('Nu s-a găsit stream audio');
-    
+
     console.log(`✅ Stream obținut`);
     return audioUrl;
   } catch (error) {
@@ -175,7 +175,6 @@ module.exports = {
       if (!isSpotify) {
         const isUrl = query.startsWith('http://') || query.startsWith('https://');
         if (isUrl) {
-          // Link direct - extragem titlul cu API
           try {
             const result = await searchYoutube(query);
             url = query;
@@ -186,7 +185,6 @@ module.exports = {
             );
           }
         } else {
-          // Căutare text
           try {
             const result = await searchYoutube(query);
             url = result.url;
@@ -235,6 +233,5 @@ module.exports = {
         await interaction.followUp({ content: '❌ A apărut o eroare.', ephemeral: true });
       }
     }
-  },
-};'
-  
+  }
+};
