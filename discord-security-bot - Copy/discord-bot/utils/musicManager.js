@@ -1,4 +1,6 @@
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
+const { createReadStream } = require('fs');
+const https = require('https');
 
 const queues = new Map();
 
@@ -47,6 +49,21 @@ async function connect(voiceChannel) {
   return state;
 }
 
+// ===== FUNCȚIE NOUĂ PENTRU A CREA RESURSĂ DIN URL =====
+function createAudioResourceFromUrl(url, title) {
+  // Dacă URL-ul este un stream audio direct de la yt-dlp
+  if (typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
+    // Folosește HTTPS pentru a descărca stream-ul
+    return createAudioResource(url, {
+      inputType: 'arbitrary',
+      inlineVolume: true
+    });
+  }
+  // Fallback: dacă este un buffer sau altceva
+  return createAudioResource(url, { inputType: 'arbitrary' });
+}
+// ========================================================
+
 async function playNext(guildId) {
   const state = getQueue(guildId);
   if (!state.player || state.queue.length === 0) {
@@ -56,7 +73,16 @@ async function playNext(guildId) {
 
   const next = state.queue.shift();
   try {
-    const resource = createAudioResource(next.stream, { inputType: next.type === 'arbitrary' ? undefined : next.type });
+    // ===== MODIFICARE AICI =====
+    // Folosește noul helper pentru a crea resursa
+    let resource;
+    if (typeof next.stream === 'string' && next.stream.startsWith('http')) {
+      resource = createAudioResourceFromUrl(next.stream, next.title);
+    } else {
+      resource = createAudioResource(next.stream, { inputType: 'arbitrary' });
+    }
+    // ============================
+    
     state.player.play(resource);
     state.playing = true;
     if (state.textChannel) {
