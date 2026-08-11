@@ -1,6 +1,62 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const play = require('play-dl');
 const { connect, playNext } = require('../../utils/musicManager');
+
+// ===== FUNCȚIE NOUĂ PENTRU yt-dlp (ÎNLOCUIEȘTE play-dl) =====
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
+const fs = require('fs');
+const path = require('path');
+
+// Calea către executabilul yt-dlp
+const ytDlpPath = path.join(__dirname, '../../yt-dlp');
+
+async function getYtInfo(url) {
+  try {
+    const { stdout, stderr } = await execPromise(`"${ytDlpPath}" -j "${url}"`);
+    if (stderr && stderr.includes('ERROR')) {
+      throw new Error(stderr);
+    }
+    return JSON.parse(stdout);
+  } catch (error) {
+    console.error('❌ Eroare la obținerea info:', error.message);
+    throw error;
+  }
+}
+
+async function getYtStream(url) {
+  try {
+    // Folosește yt-dlp pentru a obține URL-ul stream-ului audio
+    const { stdout } = await execPromise(
+      `"${ytDlpPath}" -f bestaudio -g "${url}"`
+    );
+    const audioUrl = stdout.trim();
+    if (!audioUrl) throw new Error('Nu s-a găsit stream audio');
+    return audioUrl;
+  } catch (error) {
+    console.error('❌ Eroare la obținerea stream:', error.message);
+    throw error;
+  }
+}
+
+// Funcție pentru căutare YouTube
+async function searchYoutube(query) {
+  try {
+    const { stdout } = await execPromise(
+      `"${ytDlpPath}" -j "ytsearch1:${query}"`
+    );
+    const data = JSON.parse(stdout);
+    if (!data || !data.url) throw new Error('Nu s-a găsit niciun rezultat');
+    return {
+      url: data.url,
+      title: data.title || query
+    };
+  } catch (error) {
+    console.error('❌ Eroare la căutare:', error.message);
+    throw error;
+  }
+}
+// ============================================================
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -28,61 +84,56 @@ module.exports = {
     try {
       let url = query;
       let title = query;
-      let stream;
+      let audioUrl;
 
       console.log(`🔍 Caut: ${query}`);
 
-      // Validare link
-      const validation = play.yt_validate(query);
-
-      if (validation !== 'video') {
+      // Verifică dacă este link sau text de căutare
+      const isUrl = query.startsWith('http://') || query.startsWith('https://');
+      
+      if (isUrl) {
+        // Link direct - obține informații
+        try {
+          const info = await getYtInfo(query);
+          url = info.url || query;
+          title = info.title || query;
+          audioUrl = await getYtStream(url);
+        } catch (err) {
+          return await interaction.editReply(
+            `❌ Eroare la procesarea link-ului: ${err.message.substring(0, 100)}`
+          );
+        }
+      } else {
         // Căutare
         try {
-          const results = await Promise.race([
-            play.search(query, { limit: 1, source: { youtube: 'video' } }),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Timeout search')), 10000)
-            ),
-          ]);
-
-          if (!results.length || !results[0].url) {
-            return await interaction.editReply(
-              '❌ Nu am găsit nicio piesă. Încearcă cu link direct.'
-            );
-          }
-          url = results[0].url;
-          title = results[0].title || query;
-        } catch (searchErr) {
+          const result = await searchYoutube(query);
+          url = result.url;
+          title = result.title;
+          audioUrl = await getYtStream(url);
+        } catch (err) {
           return await interaction.editReply(
-            '❌ Căutarea a expirat. Încearcă cu link direct.'
+            `❌ Nu am găsit nicio piesă: ${err.message.substring(0, 100)}`
           );
         }
       }
 
       console.log(`✅ URL final: ${url} | Title: ${title}`);
 
-      // Stream direct cu play-dl
-      try {
-        stream = await play.stream(url);
-        if (!stream) {
-          return await interaction.editReply('❌ Piesa nu e disponibilă.');
-        }
-      } catch (streamErr) {
-        console.error('❌ Eroare stream:', streamErr.message);
-        return await interaction.editReply(
-          `❌ Eroare: ${streamErr.message.substring(0, 100)}`
-        );
+      // Verifică dacă audioUrl există
+      if (!audioUrl) {
+        return await interaction.editReply('❌ Nu s-a putut obține stream-ul audio.');
       }
 
       // Conectează
       const state = await connect(voiceChannel);
       state.textChannel = interaction.channel;
 
-      // Adaugă în coadă
+      // Adaugă în coadă (folosește audioUrl ca stream)
       state.queue.push({
         title,
-        stream: stream.stream,
+        stream: audioUrl,  // Folosește URL-ul direct
         type: 'arbitrary',
+        url: url
       });
 
       if (!state.playing) {
@@ -105,3 +156,4 @@ module.exports = {
     }
   },
 };
+
