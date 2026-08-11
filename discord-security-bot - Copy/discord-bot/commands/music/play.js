@@ -31,7 +31,8 @@ if (!fs.existsSync(ytDlpPath)) {
 
 console.log(`📍 Folosesc yt-dlp: ${ytDlpPath}`);
 
-const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+// User-Agent mai nou pentru a părea un browser real
+const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -73,23 +74,50 @@ async function searchYoutube(query) {
   }
 }
 
-// ===== OBȚINE STREAM AUDIO =====
+// ===== OBȚINE STREAM AUDIO (CU OPȚIUNI ÎMBUNĂTĂȚITE) =====
 async function getYtStream(url) {
   try {
-    await sleep(1000);
+    await sleep(1500);
+    
+    // Opțiuni îmbunătățite pentru a evita blocajele
+    const options = [
+      '-f bestaudio',
+      '-g',
+      `--user-agent "${userAgent}"`,
+      '--add-header "Accept-Language:en-US,en;q=0.9"',
+      '--extractor-args "youtube:player_client=web,default"',
+      '--no-check-certificate'
+    ].join(' ');
+    
+    console.log(`🎵 Obțin stream pentru: ${url}`);
+    
     const result = await withTimeout(
-      execPromise(
-        `"${ytDlpPath}" -f bestaudio -g --user-agent "${userAgent}" "${url}"`
-      ),
-      15000,
+      execPromise(`"${ytDlpPath}" ${options} "${url}"`),
+      20000,
       'Timeout yt-dlp'
     );
+    
     const audioUrl = result.stdout.trim();
     if (!audioUrl) throw new Error('Nu s-a găsit stream audio');
+    
+    console.log(`✅ Stream obținut`);
     return audioUrl;
   } catch (error) {
     console.error('❌ Eroare stream:', error.message);
-    throw new Error(`Stream: ${error.message}`);
+    
+    // Încearcă o variantă mai simplă dacă prima eșuează
+    try {
+      console.warn('⚠️ Încerc variantă simplificată...');
+      await sleep(2000);
+      const simpleResult = await withTimeout(
+        execPromise(`"${ytDlpPath}" -f bestaudio -g --user-agent "${userAgent}" "${url}"`),
+        15000,
+        'Timeout simplificat'
+      );
+      return simpleResult.stdout.trim();
+    } catch (fallbackErr) {
+      throw new Error(`Stream: ${fallbackErr.message}`);
+    }
   }
 }
 // ===================================================
