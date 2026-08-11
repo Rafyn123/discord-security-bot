@@ -61,14 +61,12 @@ module.exports = {
 
       console.log(`✅ URL final: ${url} | Title: ${title}`);
 
-      // Stream folosind play-dl corect
+      // Stream direct cu play-dl
       try {
-        const info = await play.getInfo(url);
-        if (!info) {
+        stream = await play.stream(url);
+        if (!stream) {
           return await interaction.editReply('❌ Piesa nu e disponibilă.');
         }
-        title = info.title || title;
-        stream = await play.stream(info, { discordPlayerCompatibility: true });
       } catch (streamErr) {
         console.error('❌ Eroare stream:', streamErr.message);
         return await interaction.editReply(
