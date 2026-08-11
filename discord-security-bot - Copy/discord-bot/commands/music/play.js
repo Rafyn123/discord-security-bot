@@ -2,75 +2,94 @@ const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { connect, playNext } = require('../../utils/musicManager');
 const { getSpotifyInfo } = require('../../utils/spotify');
 
-// ===== FUNCȚII PENTRU YOUTUBE CU COOKIE-URI =====
+// ===== YOUTUBE API v3 =====
+const { google } = require('googleapis');
+const youtube = google.youtube({ 
+  version: 'v3', 
+  auth: process.env.YOUTUBE_API_KEY 
+});
+
+// ===== YT-DLP DOAR PENTRU STREAM =====
 const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 const path = require('path');
 const fs = require('fs');
 
-// Calea către yt-dlp și cookies
-const ytDlpPath = path.join(__dirname, '../../yt-dlp');
-const cookiesPath = path.join(__dirname, '../../www.youtube.com_cookies.txt');
+// Detectează platforma
+const isWindows = process.platform === 'win32';
+let ytDlpPath = path.join(__dirname, '../../yt-dlp');
+if (isWindows) {
+  ytDlpPath += '.exe';
+}
 
-// User-Agent pentru a părea un browser real
+if (!fs.existsSync(ytDlpPath)) {
+  console.warn(`⚠️ yt-dlp nu a fost găsit la: ${ytDlpPath}`);
+  console.warn(`⚠️ Încerc să folosesc din PATH...`);
+  ytDlpPath = isWindows ? 'yt-dlp.exe' : 'yt-dlp';
+}
+
+console.log(`📍 Folosesc yt-dlp: ${ytDlpPath}`);
+
 const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-// Funcție de delay
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Verifică dacă fișierul de cookie-uri există
-if (!fs.existsSync(cookiesPath)) {
-  console.warn('⚠️ Fișierul de cookie-uri YouTube nu a fost găsit!');
+function withTimeout(promise, ms, errorMsg) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(errorMsg)), ms))
+  ]);
 }
 
+// ===== CĂUTARE CU API YOUTUBE =====
 async function searchYoutube(query) {
   try {
-    // Delay de 2 secunde înainte de căutare
-    await sleep(2000);
-    const { stdout } = await execPromise(
-      `"${ytDlpPath}" -j --cookies "${cookiesPath}" --extractor-args youtubetab:skip=authcheck --user-agent "${userAgent}" "ytsearch1:${query}"`
+    console.log(`🔍 Caut cu API: ${query}`);
+    const response = await withTimeout(
+      youtube.search.list({
+        part: 'snippet',
+        q: query,
+        maxResults: 1,
+        type: 'video'
+      }),
+      10000,
+      'Timeout API YouTube'
     );
-    const data = JSON.parse(stdout);
-    if (!data || !data.url) throw new Error('Nu s-a găsit niciun rezultat');
+    
+    const video = response.data.items[0];
+    if (!video) throw new Error('Nu s-a găsit niciun rezultat');
+    
+    console.log(`✅ Găsit: ${video.snippet.title}`);
     return {
-      url: data.url,
-      title: data.title || query
+      url: `https://www.youtube.com/watch?v=${video.id.videoId}`,
+      title: video.snippet.title || query
     };
   } catch (error) {
-    console.error('❌ Eroare căutare YouTube:', error.message);
-    throw new Error(`YouTube: ${error.message}`);
+    console.error('❌ Eroare API YouTube:', error.message);
+    throw new Error(`YouTube API: ${error.message}`);
   }
 }
 
+// ===== OBȚINE STREAM AUDIO =====
 async function getYtStream(url) {
   try {
-    // Delay de 3 secunde înainte de stream
-    await sleep(3000);
-    const { stdout } = await execPromise(
-      `"${ytDlpPath}" -f bestaudio -g --cookies "${cookiesPath}" --extractor-args youtubetab:skip=authcheck --user-agent "${userAgent}" "${url}"`
+    await sleep(1000);
+    const result = await withTimeout(
+      execPromise(
+        `"${ytDlpPath}" -f bestaudio -g --user-agent "${userAgent}" "${url}"`
+      ),
+      15000,
+      'Timeout yt-dlp'
     );
-    const audioUrl = stdout.trim();
+    const audioUrl = result.stdout.trim();
     if (!audioUrl) throw new Error('Nu s-a găsit stream audio');
     return audioUrl;
   } catch (error) {
-    console.error('❌ Eroare stream YouTube:', error.message);
-    // Dacă e eroare de cookies, încearcă fără cookie-uri
-    if (error.message.includes('Sign in') || error.message.includes('cookies') || error.message.includes('429')) {
-      console.warn('⚠️ Cookie-uri expirate sau blocat? Încerc fără cookie-uri...');
-      try {
-        await sleep(3000);
-        const { stdout } = await execPromise(
-          `"${ytDlpPath}" -f bestaudio -g --extractor-args youtubetab:skip=authcheck --user-agent "${userAgent}" "${url}"`
-        );
-        return stdout.trim();
-      } catch (fallbackErr) {
-        throw new Error(`YouTube Stream: ${fallbackErr.message}`);
-      }
-    }
-    throw new Error(`YouTube Stream: ${error.message}`);
+    console.error('❌ Eroare stream:', error.message);
+    throw new Error(`Stream: ${error.message}`);
   }
 }
 // ===================================================
@@ -112,14 +131,10 @@ module.exports = {
         try {
           const spotifyData = await getSpotifyInfo(query);
           title = spotifyData.title;
-          
           console.log(`🎵 Spotify: ${spotifyData.query}`);
-          
-          // Caută pe YouTube folosind numele de pe Spotify
           const youtubeResult = await searchYoutube(spotifyData.query);
           url = youtubeResult.url;
           title = spotifyData.title;
-          
           console.log(`✅ YouTube URL: ${url}`);
         } catch (spotifyErr) {
           return await interaction.editReply(
@@ -131,19 +146,15 @@ module.exports = {
       // ===== PROCESARE YOUTUBE =====
       if (!isSpotify) {
         const isUrl = query.startsWith('http://') || query.startsWith('https://');
-        
         if (isUrl) {
-          // Link direct YouTube
+          // Link direct - extragem titlul cu API
           try {
-            // Pentru link-uri directe, folosește getYtStream pentru a verifica
-            await getYtStream(query);
+            const result = await searchYoutube(query);
             url = query;
-            // Extrage titlul
-            const info = await searchYoutube(query);
-            title = info.title || query;
+            title = result.title;
           } catch (err) {
             return await interaction.editReply(
-              `❌ Eroare YouTube: ${err.message.substring(0, 150)}`
+              `❌ Eroare: ${err.message.substring(0, 150)}`
             );
           }
         } else {
@@ -198,4 +209,3 @@ module.exports = {
     }
   },
 };
-
