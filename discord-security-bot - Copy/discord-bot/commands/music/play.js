@@ -31,7 +31,7 @@ if (!fs.existsSync(ytDlpPath)) {
 
 console.log(`📍 Folosesc yt-dlp: ${ytDlpPath}`);
 
-// User-Agent mai nou pentru a părea un browser real
+// User-Agent pentru Brave
 const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
 function sleep(ms) {
@@ -74,20 +74,33 @@ async function searchYoutube(query) {
   }
 }
 
-// ===== OBȚINE STREAM AUDIO (CU OPȚIUNI ÎMBUNĂTĂȚITE) =====
+// ===== OBȚINE STREAM AUDIO (CU COOKIE-URI) =====
 async function getYtStream(url) {
   try {
     await sleep(1500);
     
-    // Opțiuni îmbunătățite pentru a evita blocajele
+    // Calea către cookie-uri
+    const cookiesPath = path.join(__dirname, '../../www.youtube.com_cookies.txt');
+    
+    // Verifică dacă există cookie-uri
+    let cookieOption = '';
+    if (fs.existsSync(cookiesPath)) {
+      cookieOption = `--cookies "${cookiesPath}"`;
+      console.log(`🍪 Folosesc cookie-uri pentru redare`);
+    } else {
+      console.warn(`⚠️ Fișierul de cookie-uri nu a fost găsit: ${cookiesPath}`);
+    }
+    
+    // Opțiuni îmbunătățite cu cookie-uri
     const options = [
       '-f bestaudio',
       '-g',
+      cookieOption,
       `--user-agent "${userAgent}"`,
       '--add-header "Accept-Language:en-US,en;q=0.9"',
       '--extractor-args "youtube:player_client=web,default"',
       '--no-check-certificate'
-    ].join(' ');
+    ].filter(opt => opt).join(' '); // Elimină opțiunile goale
     
     console.log(`🎵 Obțin stream pentru: ${url}`);
     
@@ -104,20 +117,7 @@ async function getYtStream(url) {
     return audioUrl;
   } catch (error) {
     console.error('❌ Eroare stream:', error.message);
-    
-    // Încearcă o variantă mai simplă dacă prima eșuează
-    try {
-      console.warn('⚠️ Încerc variantă simplificată...');
-      await sleep(2000);
-      const simpleResult = await withTimeout(
-        execPromise(`"${ytDlpPath}" -f bestaudio -g --user-agent "${userAgent}" "${url}"`),
-        15000,
-        'Timeout simplificat'
-      );
-      return simpleResult.stdout.trim();
-    } catch (fallbackErr) {
-      throw new Error(`Stream: ${fallbackErr.message}`);
-    }
+    throw new Error(`Stream: ${error.message}`);
   }
 }
 // ===================================================
@@ -236,4 +236,5 @@ module.exports = {
       }
     }
   },
-};
+};'
+  
