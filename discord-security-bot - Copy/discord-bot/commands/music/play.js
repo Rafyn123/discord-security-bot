@@ -2,17 +2,28 @@ const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { connect, playNext } = require('../../utils/musicManager');
 const { getSpotifyInfo } = require('../../utils/spotify');
 
-// ===== FUNCȚII PENTRU YOUTUBE =====
+// ===== FUNCȚII PENTRU YOUTUBE CU COOKIE-URI =====
 const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 const path = require('path');
+const fs = require('fs');
 
+// Calea către yt-dlp și cookies
 const ytDlpPath = path.join(__dirname, '../../yt-dlp');
+const cookiesPath = path.join(__dirname, '../../www.youtube.com_cookies.txt');
+
+// Verifică dacă fișierul de cookie-uri există
+if (!fs.existsSync(cookiesPath)) {
+  console.warn('⚠️ Fișierul de cookie-uri YouTube nu a fost găsit!');
+}
 
 async function searchYoutube(query) {
   try {
-    const { stdout } = await execPromise(`"${ytDlpPath}" -j "ytsearch1:${query}"`);
+    // Folosește cookie-urile pentru autentificare
+    const { stdout } = await execPromise(
+      `"${ytDlpPath}" -j --cookies "${cookiesPath}" "ytsearch1:${query}"`
+    );
     const data = JSON.parse(stdout);
     if (!data || !data.url) throw new Error('Nu s-a găsit niciun rezultat');
     return {
@@ -27,18 +38,31 @@ async function searchYoutube(query) {
 
 async function getYtStream(url) {
   try {
+    // Folosește cookie-urile pentru a obține stream-ul audio
     const { stdout } = await execPromise(
-      `"${ytDlpPath}" -f bestaudio -g "${url}"`
+      `"${ytDlpPath}" -f bestaudio -g --cookies "${cookiesPath}" "${url}"`
     );
     const audioUrl = stdout.trim();
     if (!audioUrl) throw new Error('Nu s-a găsit stream audio');
     return audioUrl;
   } catch (error) {
     console.error('❌ Eroare stream YouTube:', error.message);
+    // Dacă e eroare de cookies, încearcă fără cookie-uri
+    if (error.message.includes('Sign in') || error.message.includes('cookies')) {
+      console.warn('⚠️ Cookie-uri expirate? Încearcă fără...');
+      try {
+        const { stdout } = await execPromise(
+          `"${ytDlpPath}" -f bestaudio -g "${url}"`
+        );
+        return stdout.trim();
+      } catch (fallbackErr) {
+        throw new Error(`YouTube Stream: ${fallbackErr.message}`);
+      }
+    }
     throw new Error(`YouTube Stream: ${error.message}`);
   }
 }
-// =================================
+// ===================================================
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -100,9 +124,12 @@ module.exports = {
         if (isUrl) {
           // Link direct YouTube
           try {
+            // Pentru link-uri directe, folosește getYtStream pentru a verifica
+            await getYtStream(query);
+            url = query;
+            // Extrage titlul
             const info = await searchYoutube(query);
-            url = info.url;
-            title = info.title;
+            title = info.title || query;
           } catch (err) {
             return await interaction.editReply(
               `❌ Eroare YouTube: ${err.message.substring(0, 150)}`
