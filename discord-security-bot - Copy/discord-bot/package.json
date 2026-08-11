@@ -1,4 +1,4 @@
-{{
+{
   "name": "discord-security-bot",
   "version": "1.0.0",
   "description": "Discord bot cu anti-raid, moderare, music player si VC recorder",
@@ -22,4 +22,4 @@
   "engines": {
     "node": "18.x || 20.x"
   }
-  
+}
