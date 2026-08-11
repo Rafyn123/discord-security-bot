@@ -13,8 +13,8 @@ console.log(`📍 Căutam yt-dlp la: ${ytdlpPath}`);
 // Dacă deja există și e executabil, ieși
 if (fs.existsSync(ytdlpPath)) {
   try {
-    // Test dacă e executabil
-    execSync(`${ytdlpPath} --version`, { stdio: 'ignore' });
+    // Test dacă e executabil - folosesc quote-uri pentru spații
+    execSync(`"${ytdlpPath}" --version`, { stdio: 'ignore', shell: '/bin/bash' });
     console.log(`✅ ${filename} deja existent și funcțional.`);
     process.exit(0);
   } catch (e) {
@@ -33,11 +33,11 @@ if (!isWindows) {
       // Marchez executabil
       try {
         fs.chmodSync(ytdlpPath, 0o755);
-        console.log(`✅ Marcat executabil.`);
+        console.log(`✅ Marcat executabil (chmodSync).`);
       } catch (err) {
         console.warn(`⚠️ chmodSync nu a funcționat, încerc sistem de fișiere...`);
         try {
-          execSync(`chmod +x "${ytdlpPath}"`);
+          execSync(`chmod +x "${ytdlpPath}"`, { shell: '/bin/bash' });
           console.log(`✅ chmod reușit.`);
         } catch (cmdErr) {
           console.error(`❌ Ambele metode au eșuat:`, cmdErr.message);
@@ -45,13 +45,19 @@ if (!isWindows) {
         }
       }
       
-      // Verificare finală
+      // Verificare finală - CU QUOTE-URI
       try {
-        execSync(`${ytdlpPath} --version`, { stdio: 'pipe' });
-        console.log(`✅ yt-dlp e funcțional.`);
+        const output = execSync(`"${ytdlpPath}" --version`, { 
+          stdio: 'pipe',
+          encoding: 'utf-8',
+          shell: '/bin/bash'
+        });
+        console.log(`✅ yt-dlp funcțional: ${output.trim()}`);
         process.exit(0);
       } catch (testErr) {
         console.error(`❌ yt-dlp nu rulează:`, testErr.message);
+        console.error(`   Cale: ${ytdlpPath}`);
+        console.error(`   Stat: ${fs.statSync(ytdlpPath).mode.toString(8)}`);
         process.exit(1);
       }
     })
