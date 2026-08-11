@@ -13,6 +13,14 @@ const fs = require('fs');
 const ytDlpPath = path.join(__dirname, '../../yt-dlp');
 const cookiesPath = path.join(__dirname, '../../www.youtube.com_cookies.txt');
 
+// User-Agent pentru a părea un browser real
+const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// Funcție de delay
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Verifică dacă fișierul de cookie-uri există
 if (!fs.existsSync(cookiesPath)) {
   console.warn('⚠️ Fișierul de cookie-uri YouTube nu a fost găsit!');
@@ -20,9 +28,10 @@ if (!fs.existsSync(cookiesPath)) {
 
 async function searchYoutube(query) {
   try {
-    // Folosește cookie-urile pentru autentificare
+    // Delay de 2 secunde înainte de căutare
+    await sleep(2000);
     const { stdout } = await execPromise(
-      `"${ytDlpPath}" -j --cookies "${cookiesPath}" "ytsearch1:${query}"`
+      `"${ytDlpPath}" -j --cookies "${cookiesPath}" --extractor-args youtubetab:skip=authcheck --user-agent "${userAgent}" "ytsearch1:${query}"`
     );
     const data = JSON.parse(stdout);
     if (!data || !data.url) throw new Error('Nu s-a găsit niciun rezultat');
@@ -38,9 +47,10 @@ async function searchYoutube(query) {
 
 async function getYtStream(url) {
   try {
-    // Folosește cookie-urile pentru a obține stream-ul audio
+    // Delay de 3 secunde înainte de stream
+    await sleep(3000);
     const { stdout } = await execPromise(
-      `"${ytDlpPath}" -f bestaudio -g --cookies "${cookiesPath}" "${url}"`
+      `"${ytDlpPath}" -f bestaudio -g --cookies "${cookiesPath}" --extractor-args youtubetab:skip=authcheck --user-agent "${userAgent}" "${url}"`
     );
     const audioUrl = stdout.trim();
     if (!audioUrl) throw new Error('Nu s-a găsit stream audio');
@@ -48,11 +58,12 @@ async function getYtStream(url) {
   } catch (error) {
     console.error('❌ Eroare stream YouTube:', error.message);
     // Dacă e eroare de cookies, încearcă fără cookie-uri
-    if (error.message.includes('Sign in') || error.message.includes('cookies')) {
-      console.warn('⚠️ Cookie-uri expirate? Încearcă fără...');
+    if (error.message.includes('Sign in') || error.message.includes('cookies') || error.message.includes('429')) {
+      console.warn('⚠️ Cookie-uri expirate sau blocat? Încerc fără cookie-uri...');
       try {
+        await sleep(3000);
         const { stdout } = await execPromise(
-          `"${ytDlpPath}" -f bestaudio -g "${url}"`
+          `"${ytDlpPath}" -f bestaudio -g --extractor-args youtubetab:skip=authcheck --user-agent "${userAgent}" "${url}"`
         );
         return stdout.trim();
       } catch (fallbackErr) {
@@ -187,3 +198,4 @@ module.exports = {
     }
   },
 };
+
