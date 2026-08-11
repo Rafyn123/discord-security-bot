@@ -29,7 +29,7 @@ module.exports = {
     // ✅ RĂSPUND IMEDIAT (în <3 secunde)
     if (!fs.existsSync(ytdlpPath)) {
       return await interaction.reply({
-        content: `❌ yt-dlp nu a fost găsit la: ${ytdlpPath}`,
+        content: `❌ yt-dlp nu a fost găsit`,
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -54,7 +54,6 @@ module.exports = {
       const validation = play.yt_validate(query);
 
       if (validation !== 'video') {
-        // ❌ PROBLEMA: play.search() durează mult → PUT TIMEOUT
         console.log(`🔍 Caut: ${query}`);
         
         try {
@@ -67,7 +66,7 @@ module.exports = {
 
           if (!results.length || !results[0].url) {
             return await interaction.editReply(
-              '❌ Nu am găsit nicio piesă. Încearcă cu link direct de YouTube.'
+              '❌ Nu am găsit nicio piesă. Încearcă cu link direct.'
             );
           }
           url = results[0].url;
@@ -83,17 +82,17 @@ module.exports = {
 
       console.log(`✅ URL final: ${url} | Title: ${title}`);
 
-      // Crează stream cu parametri anti-bot și timeout mai mare
+      // Crează stream - FORMATUL FIX: "bestaudio/best" cu fallback
       const ytdlp = spawn(ytdlpPath, [
         url,
-        '-f', 'bestaudio',
+        '-f', 'bestaudio/best',  // ✅ FALLBACK la orice format
         '-o', '-',
         '--no-playlist',
         '--quiet',
         '--no-warnings',
-        '--socket-timeout', '30',  // ✅ TIMEOUT mai mare
-        '--extractor-args', 'youtube:player_client=web',  // ✅ Evită autentificare YouTube
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',  // ✅ User-Agent
+        '--socket-timeout', '30',
+        '--extractor-args', 'youtube:player_client=web',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       ]);
 
       let hasError = false;
@@ -120,7 +119,7 @@ module.exports = {
 
       if (hasError) {
         return await interaction.editReply(
-          `❌ Eroare descărcare: ${title}\n\`\`\`${errorMsg.slice(0, 200)}\`\`\``
+          `❌ Eroare: ${title}`
         );
       }
 
