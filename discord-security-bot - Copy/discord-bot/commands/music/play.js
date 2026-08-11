@@ -1,16 +1,6 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const play = require('play-dl');
-const { spawn } = require('child_process');
-const path = require('path');
-const fs = require('fs');
 const { connect, playNext } = require('../../utils/musicManager');
-
-// Detectare automată yt-dlp per platformă
-function getYtDlpPath() {
-  const isWindows = process.platform === 'win32';
-  const filename = isWindows ? 'yt-dlp.exe' : 'yt-dlp';
-  return path.join(__dirname, '..', '..', filename);
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -24,16 +14,6 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    const ytdlpPath = getYtDlpPath();
-    
-    // ✅ RĂSPUND IMEDIAT (în <3 secunde)
-    if (!fs.existsSync(ytdlpPath)) {
-      return await interaction.reply({
-        content: `❌ yt-dlp nu a fost găsit`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
     const voiceChannel = interaction.member.voice.channel;
     if (!voiceChannel) {
       return await interaction.reply({
@@ -42,7 +22,6 @@ module.exports = {
       });
     }
 
-    // ✅ DEFER cu flag corect
     await interaction.deferReply();
     const query = interaction.options.getString('query');
 
@@ -50,17 +29,18 @@ module.exports = {
       let url = query;
       let title = query;
 
-      // Validare dacă e link YouTube
+      console.log(`🔍 Caut: ${query}`);
+
+      // Validare link YouTube
       const validation = play.yt_validate(query);
 
       if (validation !== 'video') {
-        console.log(`🔍 Caut: ${query}`);
-        
+        // Căutare cu timeout
         try {
           const results = await Promise.race([
             play.search(query, { limit: 1, source: { youtube: 'video' } }),
             new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Timeout search')), 8000)
+              setTimeout(() => reject(new Error('Timeout search')), 10000)
             ),
           ]);
 
@@ -76,57 +56,31 @@ module.exports = {
             '❌ Căutarea a expirat. Încearcă cu link direct.'
           );
         }
-      } else {
-        title = 'Piesa cerută';
       }
 
       console.log(`✅ URL final: ${url} | Title: ${title}`);
 
-      // Crează stream - FORMATUL FIX: "bestaudio/best" cu fallback
-      const ytdlp = spawn(ytdlpPath, [
-        url,
-        '-f', 'bestaudio/best',  // ✅ FALLBACK la orice format
-        '-o', '-',
-        '--no-playlist',
-        '--quiet',
-        '--no-warnings',
-        '--socket-timeout', '30',
-        '--extractor-args', 'youtube:player_client=web',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      ]);
-
-      let hasError = false;
-      let errorMsg = '';
-
-      ytdlp.stderr.on('data', (data) => {
-        const errMsg = data.toString();
-        console.error('yt-dlp stderr:', errMsg);
-        if (errMsg.includes('ERROR')) {
-          hasError = true;
-          errorMsg = errMsg;
-        }
-      });
-
-      ytdlp.on('error', (procErr) => {
-        console.error('❌ Eroare pornire yt-dlp:', procErr.message);
-        hasError = true;
-        errorMsg = procErr.message;
-      });
+      // ✅ FOLOSESC PLAY-DL DIRECT pentru stream
+      let stream;
+      try {
+        stream = await play.stream(url, { 
+          discordPlayerCompatibility: true 
+        });
+      } catch (streamErr) {
+        console.error('❌ Eroare stream:', streamErr.message);
+        return await interaction.editReply(
+          `❌ Nu pot reda piesa. Încearcă cu alt link.`
+        );
+      }
 
       // Conectează la voice channel
       const state = await connect(voiceChannel);
       state.textChannel = interaction.channel;
 
-      if (hasError) {
-        return await interaction.editReply(
-          `❌ Eroare: ${title}`
-        );
-      }
-
       // Adaugă în coadă
       state.queue.push({
         title,
-        stream: ytdlp.stdout,
+        stream: stream.stream,
         type: 'arbitrary',
       });
 
